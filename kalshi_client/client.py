@@ -233,6 +233,19 @@ class ExchangeClient(KalshiClient):
         market_url = self.get_market_url(ticker = ticker)
         return self.get(market_url + '/history' + query_string)
 
+    def get_market_candlesticks(self, 
+                            ticker:str,
+                            series_ticker: str,
+                            start_ts: int,
+                            end_ts: int,
+                            period_interval: int,
+                            ):
+        relevant_params = {k: v for k, v in locals().items() if k != 'ticker' and v != self and k != 'series_ticker'}                            
+        query_string = self.query_generation(params = relevant_params)
+        market_url = self.get_market_url(ticker = ticker)
+        series_url = f'/series/{series_ticker}'
+        return self.get(series_url + market_url + '/' + 'candlesticks' + query_string)
+
     def get_orderbook(self, 
                         ticker:str,
                         depth:Optional[int]=None,

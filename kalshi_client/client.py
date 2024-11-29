@@ -250,7 +250,7 @@ class ExchangeClient(KalshiClient):
                     max_ts:Optional[int]=None,
                     min_ts:Optional[int]=None,
                     ):
-        query_string = self.query_generation(params={k: v for k,v in locals().items()})
+        query_string = self.query_generation(locals())
         if ticker:
             if len(query_string):
                 query_string += '&'

@@ -4,7 +4,7 @@ An unofficial python client for the Kalshi API.
 This package fixes some of the outdated code that was provided by Kalshi in their API documentation. This project aims to facilitate usage of the API through documentation and readability. 
 
 ## Changes
-- Fixed cancelling orders
+- Removed old endpoints and added new ones
 - Added parameters that weren't in original code
 - Added documentation and made code readable
 - Use requests session for static parts of headers

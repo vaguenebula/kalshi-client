@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Optional
 from datetime import datetime
+from urllib.parse import urlencode
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.exceptions import InvalidSignature
@@ -134,12 +135,18 @@ class KalshiClient:
                 raise HttpError(response.reason, response.status_code)
             
     def query_generation(self, params:dict) -> str:
-        relevant_params = {k:v for k,v in params.items() if v}
-        if len(relevant_params):
-            query = '?'+''.join("&"+str(k)+"="+str(v) for k,v in relevant_params.items())[1:]
-        else:
-            query = ''
-        return query
+        """
+        Generate a URL query string from a dictionary of parameters.
+
+        Args:
+            params (dict): Dictionary of parameters where keys are strings and values
+                        are either strings or values convertible to strings.
+
+        Returns:
+            str: A properly formatted query string, or an empty string if no parameters are provided.
+        """
+        query = '&'.join(f'{str(k)}={str(v)}' for k, v in params.items() if v)
+        return f'?{query}' if query else ''
 
 class HttpError(Exception):
     """Represents an HTTP error with reason and status code."""
@@ -214,12 +221,12 @@ class ExchangeClient(KalshiClient):
 
     def get_event(self, 
                     event_ticker:str):
-        dictr = self.get(self.events_url+'/'+event_ticker)
+        dictr = self.get(self.events_url + '/' + event_ticker)
         return dictr
 
     def get_series(self, 
                     series_ticker:str):
-        dictr = self.get(self.series_url+'/'+series_ticker)
+        dictr = self.get(self.series_url + '/' + series_ticker)
         return dictr
 
     def get_market_history(self, 
@@ -229,7 +236,7 @@ class ExchangeClient(KalshiClient):
                             max_ts:Optional[int]=None,
                             min_ts:Optional[int]=None,
                             ):
-        relevant_params = {k: v for k,v in locals().items() if k!= 'ticker'}                            
+        relevant_params = {k: v for k, v in locals().items() if k != 'ticker'}                            
         query_string = self.query_generation(params = relevant_params)
         market_url = self.get_market_url(ticker = ticker)
         dictr = self.get(market_url + '/history' + query_string)
@@ -239,9 +246,9 @@ class ExchangeClient(KalshiClient):
                         ticker:str,
                         depth:Optional[int]=None,
                         ):
-        relevant_params = {k: v for k,v in locals().items() if k!= 'ticker'}                            
+        relevant_params = {k: v for k, v in locals().items() if k != 'ticker'}                            
         query_string = self.query_generation(params = relevant_params)
-        market_url = self.get_market_url(ticker = ticker)
+        market_url = self.get_market_url(ticker)
         dictr = self.get(market_url + "/orderbook" + query_string)
         return dictr
 
@@ -258,7 +265,7 @@ class ExchangeClient(KalshiClient):
                 query_string += '&'
             else:
                 query_string += '?'
-            query_string += "ticker="+str(ticker)
+            query_string += "ticker=" + ticker
             
         trades_url = self.markets_url + '/trades'
         dictr = self.get(trades_url + query_string)
@@ -338,7 +345,7 @@ class ExchangeClient(KalshiClient):
         dict
             Response from the API containing the details of the created order.
         """
-        relevant_params = {k: v for k, v in locals().items() if k != 'self' and v is not None}
+        relevant_params = {k: v for k, v in locals().items() if k != 'self' and v}
         order_json = json.dumps(relevant_params)
         orders_url = self.portfolio_url + '/orders'
         result = self.post(path=orders_url, body=order_json)

@@ -22,12 +22,13 @@ class KalshiClient:
         """Initializes the client and logs in the specified user.
         Raises an HttpError if the user could not be authenticated.
         """
-        self.session = requests.Session()
-        self.session.headers.update({"Content-Type": "application/json"})
-        self.host = host
+        self.host = host 
         self.key_id: str = key_id
-        self.private_key: rsa.RSAPrivateKey = private_key
         self.user_id = user_id
+        self.private_key: rsa.RSAPrivateKey = private_key
+        self.session = requests.Session()
+        self.session.headers.update({"Content-Type": "application/json",
+                                     "KALSHI-ACCESS-KEY": self.key_id,})
         self.last_api_call = datetime.now()
 
     """Built in rate-limiter. We STRONGLY encourage you to keep 
@@ -99,8 +100,6 @@ class KalshiClient:
 
         # Build headers dictionary
         headers = {
-            "Content-Type": "application/json",
-            "KALSHI-ACCESS-KEY": self.key_id,
             "KALSHI-ACCESS-SIGNATURE": signature,
             "KALSHI-ACCESS-TIMESTAMP": timestampt_str,
         }
@@ -135,7 +134,7 @@ class KalshiClient:
                 raise HttpError(response.reason, response.status_code)
             
     def query_generation(self, params:dict) -> str:
-        relevant_params = {k:v for k,v in params.items() if v != None}
+        relevant_params = {k:v for k,v in params.items() if v}
         if len(relevant_params):
             query = '?'+''.join("&"+str(k)+"="+str(v) for k,v in relevant_params.items())[1:]
         else:
@@ -254,7 +253,7 @@ class ExchangeClient(KalshiClient):
                     min_ts:Optional[int]=None,
                     ):
         query_string = self.query_generation(params={k: v for k,v in locals().items()})
-        if ticker != None:
+        if ticker:
             if len(query_string):
                 query_string += '&'
             else:

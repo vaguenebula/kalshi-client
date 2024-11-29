@@ -40,11 +40,8 @@ class KalshiClient:
         # Define the time threshold in seconds
         THRESHOLD_IN_SECONDS = 0.1
 
-        # Get the current time
-        now = datetime.now()
-
         # Check if the time since the last API call is below the threshold
-        elapsed_time = (now - self.last_api_call).total_seconds()
+        elapsed_time = (datetime.now() - self.last_api_call).total_seconds()
         if elapsed_time < THRESHOLD_IN_SECONDS:
             time.sleep(THRESHOLD_IN_SECONDS - elapsed_time)
 
@@ -195,9 +192,7 @@ class ExchangeClient(KalshiClient):
                         status:Optional[str]=None,
                         tickers:Optional[str]=None,
                             ):
-        query_string = self.query_generation(params={k: v for k,v in locals().items()})
-        dictr = self.get(self.markets_url+query_string)
-        return dictr
+        return self.get(self.markets_url + self.query_generation(locals()))
 
     def get_events(self,
                         limit:Optional[int]=None,
@@ -205,9 +200,7 @@ class ExchangeClient(KalshiClient):
                         series_ticker:Optional[str]=None,
                         status:Optional[str]=None,
                         ):
-        query_string = self.query_generation(params={k: v for k,v in locals().items()})
-        dictr = self.get(self.events_url+query_string)
-        return dictr
+        return self.get(self.events_url + self.query_generation(locals()))
 
     def get_market_url(self, 
                         ticker:str):
@@ -220,9 +213,8 @@ class ExchangeClient(KalshiClient):
         return dictr
 
     def get_event(self, 
-                    event_ticker:str):
-        dictr = self.get(self.events_url + '/' + event_ticker)
-        return dictr
+                    event_ticker: str):
+        return self.get(f'{self.events_url}/{event_ticker}')
 
     def get_series(self, 
                     series_ticker:str):
@@ -239,8 +231,7 @@ class ExchangeClient(KalshiClient):
         relevant_params = {k: v for k, v in locals().items() if k != 'ticker'}                            
         query_string = self.query_generation(params = relevant_params)
         market_url = self.get_market_url(ticker = ticker)
-        dictr = self.get(market_url + '/history' + query_string)
-        return dictr
+        return self.get(market_url + '/history' + query_string)
 
     def get_orderbook(self, 
                         ticker:str,
@@ -274,8 +265,7 @@ class ExchangeClient(KalshiClient):
     # portfolio endpoints!
 
     def get_balance(self,):
-        dictr = self.get(self.portfolio_url + '/balance')
-        return dictr
+        return self.get(self.portfolio_url + '/balance')
 
     def create_order(self,
                  ticker: str,

@@ -1,169 +1,28 @@
-import requests
 import json
-from datetime import datetime
-from typing import Any, Dict, Optional
-from datetime import datetime
-from urllib.parse import urlencode
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
-from cryptography.exceptions import InvalidSignature
-import time 
-import base64
+from typing import Optional
+from cryptography.hazmat.primitives.asymmetric import rsa
+from kalshi_client.connector import Connector
 
 
-class KalshiClient:
-    """A simple client that allows utils to call authenticated Kalshi API endpoints."""
-    def __init__(
-        self,
-        host: str,
-        key_id: str,
-        private_key: rsa.RSAPrivateKey,
-        user_id: Optional[str] = None,
-    ):
-        """Initializes the client and logs in the specified user.
-        Raises an HttpError if the user could not be authenticated.
-        """
-        self.host = host 
-        self.key_id: str = key_id
-        self.user_id = user_id
-        self.private_key: rsa.RSAPrivateKey = private_key
-        self.session = requests.Session()
-        self.session.headers.update({"Content-Type": "application/json",
-                                     "KALSHI-ACCESS-KEY": self.key_id,})
-        self.last_api_call = datetime.now()
-
-    """Built in rate-limiter. We STRONGLY encourage you to keep 
-    some sort of rate limiting, just in case there is a bug in your 
-    code. Feel free to adjust the threshold"""
-    def rate_limit(self) -> None:
-
-        # Define the time threshold in seconds
-        THRESHOLD_IN_SECONDS = 0.1
-
-        # Check if the time since the last API call is below the threshold
-        elapsed_time = (datetime.now() - self.last_api_call).total_seconds()
-        if elapsed_time < THRESHOLD_IN_SECONDS:
-            time.sleep(THRESHOLD_IN_SECONDS - elapsed_time)
-
-        # Update the last API call timestamp
-        self.last_api_call = datetime.now()
-
-
-    def post(self, path: str, body: dict) -> Any:
-        """POSTs to an authenticated Kalshi HTTP endpoint.
-        Returns the response body. Raises an HttpError on non-2XX results.
-        """
-        self.rate_limit()
-
-        response = self.session.post(
-            self.host + path, data=body, headers=self.request_headers("POST", path)
-        )
-        self.raise_if_bad_response(response)
-        return response.json()
-
-    def get(self, path: str, params: Dict[str, Any] = {}) -> Any:
-        """GETs from an authenticated Kalshi HTTP endpoint.
-        Returns the response body. Raises an HttpError on non-2XX results."""
-        self.rate_limit()
-        
-        response = self.session.get(
-            self.host + path, headers=self.request_headers("GET", path), params=params
-        )
-        self.raise_if_bad_response(response)
-        return response.json()
-
-    def delete(self, path: str, params: Dict[str, Any] = {}) -> Any:
-        """Posts from an authenticated Kalshi HTTP endpoint.
-        Returns the response body. Raises an HttpError on non-2XX results."""
-        self.rate_limit()
-        
-        response = self.session.delete(
-            self.host + path, headers=self.request_headers("DELETE", path), params=params
-        )
-        self.raise_if_bad_response(response)
-        return response.json()
-
-    def request_headers(self, method: str, path: str) -> Dict[str, Any]:
-        # Generate the current timestamp in milliseconds
-        timestampt_str = str(int(datetime.now().timestamp() * 1000))
-
-        # Extract the path without query parameters
-        clean_path = path.split('?', 1)[0]
-
-        # Construct the message string for signing
-        msg_string = f"{timestampt_str}{method}/trade-api/v2{clean_path}"
-
-        # Sign the message string
-        signature = self.sign_pss_text(msg_string)
-
-        # Build headers dictionary
-        headers = {
-            "KALSHI-ACCESS-SIGNATURE": signature,
-            "KALSHI-ACCESS-TIMESTAMP": timestampt_str,
-        }
-        return headers
-
-    
-    def sign_pss_text(self, text: str) -> str:
-        # Before signing, we need to hash our message.
-        # The hash is what we actually sign.
-        # Convert the text to bytes
-        message = text.encode('utf-8')
-        try:
-            signature = self.private_key.sign(
-                message,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.DIGEST_LENGTH
-                ),
-                hashes.SHA256()
-            )
-            return base64.b64encode(signature).decode('utf-8')
-        except InvalidSignature as e:
-            raise ValueError("RSA sign PSS failed") from e
-
-    def raise_if_bad_response(self, response: requests.Response) -> None:
-        if response.status_code not in range(200, 299):
-            if response.status_code == 404:
-                raise HttpError(response.reason, response.status_code, tip='Check ticker used for call if one was provided')
-            elif response.status_code == 400:
-                raise HttpError(response.reason, response.status_code, tip='One or more of the parameters could be wrong')
-            else:
-                raise HttpError(response.reason, response.status_code)
-            
-    def query_generation(self, params:dict) -> str:
-        """
-        Generate a URL query string from a dictionary of parameters.
-
-        Args:
-            params (dict): Dictionary of parameters where keys are strings and values
-                        are either strings or values convertible to strings.
-
-        Returns:
-            str: A properly formatted query string, or an empty string if no parameters are provided.
-        """
-        query = '&'.join(f'{str(k)}={str(v)}' for k, v in params.items() if v)
-        return f'?{query}' if query else ''
-
-class HttpError(Exception):
-    """Represents an HTTP error with reason and status code."""
-    def __init__(self, reason: str, status: int, tip: str = None):
-        super().__init__(reason)
-        self.reason = reason
-        self.status = status
-        self.tip = tip
-
-    def __str__(self) -> str:
-        return f'\n\nHttpError({self.status} {self.reason})\nTip: {self.tip}\n'
-
-class ExchangeClient(KalshiClient):
+class KalshiClient(Connector):
     def __init__(self, key_id: str, private_key: rsa.RSAPrivateKey, 
-                 exchange_api_base: str = 'https://api.elections.kalshi.com/trade-api/v2'):
+                 exchange_api_base: str = 'https://api.elections.kalshi.com/trade-api/v2',
+                 rate_limit: int = 10):
         super().__init__(
             exchange_api_base,
             key_id,
             private_key,
+            rate_limit
         )
+        """
+        Initializes the KalshiClient.
+
+        Args:
+            key_id (str): The key id for the client.
+            private_key (rsa.RSAPrivateKey): The private key for the client.
+            exchange_api_base (str, optional): The base URL for the Kalshi API. Defaults to 'https://api.elections.kalshi.com/trade-api/v2'.
+            rate_limit (int, optional): The rate limit for the client (per second). Defaults to 10.
+        """
         self.key_id = key_id
         self.private_key = private_key
         self.exchange_url = "/exchange"
@@ -192,6 +51,22 @@ class ExchangeClient(KalshiClient):
                         status:Optional[str]=None,
                         tickers:Optional[str]=None,
                             ):
+        """
+        Gets the markets based on the specified query parameters.
+
+        Args:
+            limit (Optional[int], optional): Specifies the number of results to return per page. Must be between 1 and 1000. Defaults to 100.
+            cursor (Optional[str], optional): A pagination pointer to the next page of records. If provided, the API will return the next page containing the number of records specified in the `limit` parameter. If not provided, the API will return the first page of the results for the query. Note: The `cursor` does not store filters. Therefore, any filters (e.g., `event_ticker`, `series_ticker`, `max_close_ts`, `min_close_ts`, or `status`) passed in the original query must be passed again. Defaults to None.
+            event_ticker (Optional[str], optional): Filters markets by the specified event ticker. Defaults to None.
+            series_ticker (Optional[str], optional): Filters markets by the specified series ticker. Defaults to None.
+            max_close_ts (Optional[int], optional): Filters markets with a close timestamp less than or equal to the specified timestamp. Defaults to None.
+            min_close_ts (Optional[int], optional): Filters markets with a close timestamp greater than or equal to the specified timestamp. Defaults to None.
+            status (Optional[str], optional): Filters markets by their status. Valid values include: `unopened`, `open`, `closed`, `settled`. Defaults to None.
+            tickers (Optional[str], optional): Filters markets by the specified tickers, as a comma separated list. Defaults to None.
+
+        Returns:
+            dict: A dictionary containing the retrieved markets and associated metadata
+        """
         return self.get(self.markets_url + self.query_generation(locals()))
 
     def get_events(self,
@@ -199,11 +74,34 @@ class ExchangeClient(KalshiClient):
                         cursor:Optional[str]=None,
                         series_ticker:Optional[str]=None,
                         status:Optional[str]=None,
+                        with_nested_markets:Optional[bool]=None,
                         ):
+        """
+        Gets the events based on the specified query parameters.
+
+        Args:
+            limit (Optional[int], optional): Specifies the number of results to return per page. Must be between 1 and 1000. Defaults to 100.
+            cursor (Optional[str], optional): A pagination pointer to the next page of records. If provided, the API will return the next page containing the number of records specified in the `limit` parameter. If not provided, the API will return the first page of the results for the query. Note: The `cursor` does not store filters. Therefore, any filters (e.g., `series_ticker` or `status`) passed in the original query must be passed again. Defaults to None.
+            series_ticker (Optional[str], optional): Filters events by the specified series ticker. Defaults to None.
+            status (Optional[str], optional): Filters events by their status. Valid values include: `unopened`, `open`, `closed`, `settled`. Defaults to None.
+            with_nested_markets (Optional[bool], optional): If `True`, retrieves nested markets within the event. Defaults to None.
+
+        Returns:
+            dict: A dictionary containing the retrieved events and associated metadata
+        """
         return self.get(self.events_url + self.query_generation(locals()))
 
     def get_market_url(self, 
                         ticker:str):
+        """
+        Get the URL for a specific market based on its ticker.
+        
+        Args:
+            ticker (str): The market ticker.
+        
+        Returns:
+            str: The URL for the specified market.
+        """
         return self.markets_url+'/'+ticker
 
     def get_market(self, 
@@ -213,7 +111,20 @@ class ExchangeClient(KalshiClient):
         return dictr
 
     def get_event(self, 
-                    event_ticker: str):
+                    event_ticker: str,
+                    with_nested_markets: Optional[bool] = None):
+        """
+        Get the event based on the event ticker.
+
+        Args:
+            event_ticker (str): The event ticker.
+            with_nested_markets (Optional[bool], optional): If `True`, retrieves nested markets within the event. Defaults to None.
+        
+        Returns:
+            dict: A dictionary containing the retrieved event and associated metadata
+        """
+        if with_nested_markets is not None:
+            return self.get(f'{self.events_url}/{event_ticker}?with_nested_markets={with_nested_markets}')
         return self.get(f'{self.events_url}/{event_ticker}')
 
     def get_series(self, 
@@ -222,27 +133,51 @@ class ExchangeClient(KalshiClient):
         return dictr
 
     def get_market_candlesticks(self, 
-                            ticker:str,
-                            series_ticker: str,
-                            start_ts: int,
-                            end_ts: int,
-                            period_interval: int,
-                            ):
-        relevant_params = {k: v for k, v in locals().items() if k != 'ticker' and v != self and k != 'series_ticker'}                            
-        query_string = self.query_generation(params = relevant_params)
-        market_url = self.get_market_url(ticker = ticker)
-        series_url = f'/series/{series_ticker}'
-        return self.get(series_url + market_url + '/' + 'candlesticks' + query_string)
+                                ticker: str,
+                                series_ticker: str,
+                                start_ts: int,
+                                end_ts: int,
+                                period_interval: int):
+        """
+        Get the candlesticks for a specific market based on the specified query parameters.
+
+        Args:
+            ticker (str): The market ticker.
+            series_ticker (str): The series ticker.
+            start_ts (int): The start timestamp in unix seconds.
+            end_ts (int): The end timestamp in unix seconds.
+            period_interval (int): Specifies the length of each candlestick period, in minutes. Must be one minute, one hour, or one day.
+        
+        Returns:
+            dict: A dictionary containing the retrieved candlesticks and associated metadata.
+        """
+        params = {
+            'start_ts': start_ts,
+            'end_ts': end_ts,
+            'period_interval': period_interval
+        }
+        query_string = self.query_generation(params)
+        url = f'/series/{series_ticker}/markets/{ticker}/candlesticks{query_string}'
+        return self.get(url)
 
     def get_orderbook(self, 
                         ticker:str,
                         depth:Optional[int]=None,
                         ):
+        """
+        Get the orderbook for a specific market based on the specified query parameters.
+        
+        Args:
+            ticker (str): The market ticker.
+            depth (Optional[int], optional): Depth specifies the maximum number of orderbook price levels you want to see for either side. Only the highest (most relevant) price level are kept.
+        
+        Returns:
+            dict: A dictionary containing the retrieved orderbook and associated metadata
+        """
         relevant_params = {k: v for k, v in locals().items() if k != 'ticker'}                            
         query_string = self.query_generation(params = relevant_params)
         market_url = self.get_market_url(ticker)
-        dictr = self.get(market_url + "/orderbook" + query_string)
-        return dictr
+        return self.get(market_url + "/orderbook" + query_string)
 
     def get_trades(self,
                     ticker:Optional[str]=None,
@@ -251,6 +186,7 @@ class ExchangeClient(KalshiClient):
                     max_ts:Optional[int]=None,
                     min_ts:Optional[int]=None,
                     ):
+        
         query_string = self.query_generation(locals())
         if ticker:
             if len(query_string):
@@ -281,61 +217,7 @@ class ExchangeClient(KalshiClient):
                  sell_position_floor: Optional[int] = None,
                  buy_max_cost: Optional[int] = None,
                  ):
-        """
-        Creates an order with the specified parameters.
 
-        Args
-        -----------
-        ticker : str
-            Required. The ticker of the market where the order will be placed.
-            
-        client_order_id : str
-            Required. Unique identifier for the client order. Use str(uuid4())
-
-        side : str
-            Required. Specifies the side of the trade. Accepts either 'yes' or 'no'.
-            
-        action : str
-            Required. Indicates whether the order is a 'buy' or 'sell'.
-            
-        count : int
-            Required. Number of contracts to be bought or sold.
-            
-        type : str
-            Required. Specifies the type of order. Accepts either 'market' or 'limit'.
-            For limit orders, one of `yes_price` or `no_price` must be provided.
-            
-        yes_price : Optional[int]
-            Optional. Price (in cents) for the Yes side of the trade. Exactly one of 
-            `yes_price` or `no_price` must be provided. If both are provided, the request 
-            will return a 400 error.
-
-        no_price : Optional[int]
-            Optional. Price (in cents) for the No side of the trade. Exactly one of 
-            `yes_price` or `no_price` must be provided. If both are provided, the request 
-            will return a 400 error.
-
-        expiration_ts : Optional[int]
-            Optional. Expiration time of the order in Unix timestamp (seconds). 
-            - If not provided, the order will remain active until explicitly cancelled 
-            (Good 'Till Cancelled - GTC).
-            - If set in the past, the order will attempt to fill partially or completely, 
-            with the remaining unfilled quantity cancelled (Immediate-or-Cancel - IOC).
-            - If set in the future, the remaining unfilled quantity will expire at the 
-            specified time.
-            
-        sell_position_floor : Optional[int]
-            Optional. If set to 0, prevents flipping the position for a market order.
-
-        buy_max_cost : Optional[int]
-            Optional. Maximum cost (in cents) allowed for a market buy order. 
-            Only applicable if `type='market'` and `action='buy'`.
-
-        Returns
-        --------
-        dict
-            Response from the API containing the details of the created order.
-        """
         relevant_params = {k: v for k, v in locals().items() if k != 'self' and v}
         order_json = json.dumps(relevant_params)
         orders_url = self.portfolio_url + '/orders'

@@ -20,7 +20,7 @@ pip install kalshi-client
 Below is an example of how to use `kalshi-client` to print your balance on Kalshi
 
 ```python
-from kalshi_client.client import ExchangeClient
+from kalshi_client.client import KalshiClient
 from kalshi_client.utils import load_private_key_from_file
 
 if __name__ == "__main__":
@@ -30,9 +30,9 @@ if __name__ == "__main__":
     # The key id is the one that is visible that you can copy paste
 
     key_id = "your key id"
-    exchange_client = ExchangeClient(key_id=key_id, private_key=load_private_key_from_file("private_key.txt"))
+    kalshi_client = KalshiClient(key_id=key_id, private_key=load_private_key_from_file("private_key.txt"))
 
-    print(exchange_client.get_balance())
+    print(kalshi_client.get_balance())
 ```
 
 ## Contributing
